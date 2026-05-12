@@ -1,5 +1,6 @@
-version: "0.1.1"
-description: "PTP custom-RPC bridge over ESP-Hosted: Vendor IE injection from the host into the coprocessor's radio, without forking esp-hosted."
-
+version: "0.1.2"
+description: "PTP custom-RPC bridge for ESP-Hosted"
+url: "https://github.com/scrambletools/esp_ptp_rpc"
+license: "MIT"
 dependencies:
   idf: ">=5.0"
