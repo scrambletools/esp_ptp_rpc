@@ -1,0 +1,5 @@
+version: "0.1.0"
+description: "PTP custom-RPC bridge over ESP-Hosted: Vendor IE injection from the host into the coprocessor's radio, without forking esp-hosted."
+
+dependencies:
+  idf: ">=5.0"
