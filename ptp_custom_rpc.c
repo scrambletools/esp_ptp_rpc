@@ -2,21 +2,8 @@
  * Copyright 2026 Scramble Tools
  * License: MIT
  *
- * Coprocessor-side handler for the PTP custom-RPC channel. The host
- * sends PTP_RPC_MSG_SET_VENDOR_IE_REQ via esp_hosted_send_custom_data();
- * we unpack it, call esp_wifi_set_vendor_ie() locally on the
- * coprocessor (where the radio lives), and reply with
- * PTP_RPC_MSG_SET_VENDOR_IE_ACK carrying the esp_err_t so the host
- * can log call-level success.
- *
- * Auto-registration. A __attribute__((constructor)) registers the
- * handler before app_main runs, so consumers do not have to touch
- * upstream esp-hosted-mcu's main/esp_hosted_coprocessor.c. This is
- * safe because esp_hosted_register_custom_callback (see upstream
- * slave_control.c) lazy-initializes its mutex and the dispatch table
- * is BSS-allocated (zero'd at boot). Constructors run after IDF's
- * heap + log are up but before the FreeRTOS scheduler starts, which
- * is well-defined for these operations.
+ * Coprocessor-side handler for the PTP custom-RPC channel.
+ * See README.md for protocol and rationale.
  */
 
 #include "ptp_custom_rpc.h"
@@ -28,11 +15,9 @@
 #include "esp_wifi.h"
 #include "esp_wifi_types_generic.h"
 
-/* Forward declarations of the coprocessor-side ESP-Hosted custom-RPC
- * API. Declared in esp_hosted_peer_data.h, which lives inside the
- * upstream esp-hosted-mcu/slave/main tree and is not exported as a
- * component header — declaring locally keeps this component
- * decoupled from the upstream coprocessor-example layout. */
+/* esp_hosted_peer_data.h lives inside upstream
+ * esp-hosted-mcu/slave/main and is not exported as a component
+ * header — forward-declare locally to stay decoupled. */
 extern esp_err_t esp_hosted_send_custom_data(uint32_t msg_id,
                                              const uint8_t *data,
                                              size_t data_len);
@@ -60,27 +45,31 @@ static void set_vendor_ie_callback(uint32_t msg_id, const uint8_t *data,
   const void *vnd_ie = data + sizeof(ptp_rpc_set_vendor_ie_t);
   const size_t vnd_ie_len = data_len - sizeof(ptp_rpc_set_vendor_ie_t);
 
-  /* When enabling, we need at least the 6-byte header
-   * (element_id + length + OUI + oui_type) of vendor_ie_data_t. */
+  /* vendor_ie_data_t needs at least its 6-byte fixed header. */
   if (hdr->enable && vnd_ie_len < 6) {
     ESP_LOGW(TAG, "SET_VENDOR_IE_REQ vnd_ie too short: %zu", vnd_ie_len);
     ack.esp_err = ESP_ERR_INVALID_SIZE;
     goto send_ack;
   }
 
+  /* esp_wifi_set_vendor_ie returns ESP_ERR_INVALID_ARG (wifi:"the
+   * vendor ie has been setted, clear it before setting again") when a
+   * Vendor IE is already installed at the same (type, idx) slot. For
+   * the gPTP FollowUpInformation publish use case the IE payload
+   * changes every Sync interval, so we clear-then-set on every
+   * install. The clear is a no-op the first time and cheap thereafter. */
+  if (hdr->enable) {
+    (void)esp_wifi_set_vendor_ie(false, (wifi_vendor_ie_type_t)hdr->type,
+                                 (wifi_vendor_ie_id_t)hdr->idx, NULL);
+  }
   ack.esp_err = esp_wifi_set_vendor_ie((bool)hdr->enable,
                                        (wifi_vendor_ie_type_t)hdr->type,
                                        (wifi_vendor_ie_id_t)hdr->idx, vnd_ie);
-  if (ack.esp_err == ESP_OK) {
-    const uint8_t *p = (const uint8_t *)vnd_ie;
-    ESP_LOGI(TAG,
-             "Vendor IE %s: wifi_type=%u idx=%u OUI=%02x:%02x:%02x oui_type=%u "
-             "vnd_ie_len=%zu",
-             hdr->enable ? "installed" : "removed", hdr->type, hdr->idx,
-             p[2], p[3], p[4], p[5], vnd_ie_len);
-  } else {
+  if (ack.esp_err != ESP_OK) {
     ESP_LOGE(TAG, "esp_wifi_set_vendor_ie: %s", esp_err_to_name(ack.esp_err));
   }
+  /* Periodic-publish path: no INFO log on success — would spam at the
+   * Sync interval (8 Hz for gPTP default). Errors still log. */
 
 send_ack: {
   esp_err_t s = esp_hosted_send_custom_data(PTP_RPC_MSG_SET_VENDOR_IE_ACK,
@@ -103,9 +92,10 @@ esp_err_t ptp_custom_rpc_init(void) {
   return ESP_OK;
 }
 
-/* Auto-register without requiring a call from app_main. Re-calling
- * ptp_custom_rpc_init() from user code is harmless (upstream's
- * register API updates the existing entry rather than duplicating). */
+/* Auto-register so the coprocessor app doesn't need to call us from
+ * app_main. Safe at constructor time: upstream's register API lazy-
+ * initializes its mutex and the dispatch table is BSS-zero. Re-calling
+ * ptp_custom_rpc_init() from user code is harmless. */
 __attribute__((constructor)) static void ptp_custom_rpc_autoreg(void) {
   (void)ptp_custom_rpc_init();
 }
