@@ -17,9 +17,10 @@
 #define PTP_RPC_MSG_SET_VENDOR_IE_ACK (PTP_RPC_MSG_BASE | 0x02U)
 
 /* Scramble Tools Vendor IE constants shared between host marshaller,
- * coprocessor RPC handler, and STA parser. OUI is the locally-
- * administered 02:00:00 (placeholder until a registered OUI is
- * obtained). Two sub-types are defined:
+ * coprocessor RPC handler, and STA parser. OUI is the Scramble Tools
+ * IEEE-registered MA-L prefix 8C:1F:64 (24-bit OUI of the MA-S OUI
+ * 0x8C1F6436C; see Development/profiles/avb_lite.md). Two sub-types
+ * are defined:
  *
  *   FOLLOWUP (0x00): IEEE 802.1AS-2020 §12.7 FollowUpInformation
  *     payload, byte-format compliant; carries the gPTP marker
@@ -36,9 +37,9 @@
  * publish time — the host ships zeros and the handler patches in
  * esp_wifi_get_tsf_time(WIFI_IF_AP) before calling
  * esp_wifi_set_vendor_ie(). Selection is by vendor_oui_type field. */
-#define PTP_VND_IE_OUI0          0x02
-#define PTP_VND_IE_OUI1          0x00
-#define PTP_VND_IE_OUI2          0x00
+#define PTP_VND_IE_OUI0          0x8C
+#define PTP_VND_IE_OUI1          0x1F
+#define PTP_VND_IE_OUI2          0x64
 #define PTP_VND_IE_OUI_TYPE_FOLLOWUP     0x00
 #define PTP_VND_IE_OUI_TYPE_TSF_MAPPING  0x01
 #define PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN  8   /* uint64_t LE µs */
