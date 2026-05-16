@@ -42,14 +42,48 @@ static void set_vendor_ie_callback(uint32_t msg_id, const uint8_t *data,
   }
 
   const ptp_rpc_set_vendor_ie_t *hdr = (const ptp_rpc_set_vendor_ie_t *)data;
-  const void *vnd_ie = data + sizeof(ptp_rpc_set_vendor_ie_t);
+  uint8_t *vnd_ie = (uint8_t *)(data + sizeof(ptp_rpc_set_vendor_ie_t));
   const size_t vnd_ie_len = data_len - sizeof(ptp_rpc_set_vendor_ie_t);
+
+  static uint32_t s_calls = 0;
+  ++s_calls;
+  if ((s_calls % 25) == 1) {
+    ESP_LOGI(TAG,
+             "set_vendor_ie cb #%u: en=%u type=%u idx=%u vnd_ie_len=%u "
+             "oui_type=0x%02x",
+             (unsigned)s_calls, hdr->enable, hdr->type, hdr->idx,
+             (unsigned)vnd_ie_len,
+             (vnd_ie_len >= 6) ? vnd_ie[5] : 0xff);
+  }
 
   /* vendor_ie_data_t needs at least its 6-byte fixed header. */
   if (hdr->enable && vnd_ie_len < 6) {
     ESP_LOGW(TAG, "SET_VENDOR_IE_REQ vnd_ie too short: %zu", vnd_ie_len);
     ack.esp_err = ESP_ERR_INVALID_SIZE;
     goto send_ack;
+  }
+
+  /* Plan A TSF-mapping IE patch: if the incoming IE matches the
+   * Scramble Tools TSF_MAPPING sub-OUI, replace the 8-byte placeholder
+   * payload with esp_wifi_get_tsf_time(WIFI_IF_AP) (LE µs). The
+   * capture happens HERE, right before we hand the bytes to the wifi
+   * blob — minimising skew vs the host's preciseOriginTimestamp
+   * (which was captured at host marshal time, one ESP-Hosted RPC ago). */
+  if (hdr->enable && vnd_ie_len >=
+      6 + PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN &&
+      vnd_ie[2] == PTP_VND_IE_OUI0 && vnd_ie[3] == PTP_VND_IE_OUI1 &&
+      vnd_ie[4] == PTP_VND_IE_OUI2 &&
+      vnd_ie[5] == PTP_VND_IE_OUI_TYPE_TSF_MAPPING) {
+    int64_t tsf_us = esp_wifi_get_tsf_time(WIFI_IF_AP);
+    uint64_t v = (uint64_t)tsf_us;
+    for (int i = 0; i < 8; ++i) {
+      vnd_ie[6 + i] = (uint8_t)((v >> (8 * i)) & 0xff);
+    }
+    static uint32_t s_tsf_fills = 0;
+    if ((++s_tsf_fills % 25) == 1) {
+      ESP_LOGI(TAG, "TSF mapping IE patched #%u: tsf=%lld us idx=%u",
+               (unsigned)s_tsf_fills, (long long)tsf_us, hdr->idx);
+    }
   }
 
   /* esp_wifi_set_vendor_ie returns ESP_ERR_INVALID_ARG (wifi:"the
