@@ -16,27 +16,17 @@
 #define PTP_RPC_MSG_SET_VENDOR_IE_REQ (PTP_RPC_MSG_BASE | 0x01U)
 #define PTP_RPC_MSG_SET_VENDOR_IE_ACK (PTP_RPC_MSG_BASE | 0x02U)
 
-/* Scramble Tools Vendor IE constants shared between host marshaller,
- * coprocessor RPC handler, and STA parser. OUI is the Scramble Tools
- * IEEE-registered MA-L prefix 8C:1F:64 (24-bit OUI of the MA-S OUI
- * 0x8C1F6436C; see Development/profiles/avb_lite.md). Two sub-types
- * are defined:
+/* Vendor IE constants shared between host marshaller, coprocessor RPC
+ * handler, and STA parser. OUI is the Scramble Tools MA-L prefix
+ * 8C:1F:64. Two sub-types, selected by vendor_oui_type:
  *
- *   FOLLOWUP (0x00): IEEE 802.1AS-2020 §12.7 FollowUpInformation
- *     payload, byte-format compliant; carries the gPTP marker
- *     (preciseOriginTimestamp).
+ *   FOLLOWUP (0x00) — IEEE 802.1AS-2020 §12.7 FollowUpInformation
+ *     payload; carries the BTC marker (preciseOriginTimestamp).
  *
- *   TSF_MAPPING (0x01): Scramble Tools-private mapping IE; carries
- *     8 bytes of bridge AP-side TSF (uint64_t little-endian µs)
- *     captured at coprocessor publish time. Paired with the FOLLOWUP
- *     IE's preciseOriginTimestamp, this gives the STA a (gPTP,TSF)
- *     anchor that converts FTM-measurement t1 (in TSF µs) to GM time
- *     for sub-ms phase precision over the beacon-IE carrier.
- *
- * The TSF_MAPPING IE is filled in by the coprocessor RPC handler at
- * publish time — the host ships zeros and the handler patches in
- * esp_wifi_get_tsf_time(WIFI_IF_AP) before calling
- * esp_wifi_set_vendor_ie(). Selection is by vendor_oui_type field. */
+ *   TSF_MAPPING (0x01) — Scramble Tools-private mapping IE; 8 bytes
+ *     of bridge AP-side TSF (uint64_t LE µs). Paired with the
+ *     FOLLOWUP IE's preciseOriginTimestamp this gives the STA a
+ *     (BTC, TSF) anchor that converts FTM t1 (TSF µs) to BTC time. */
 #define PTP_VND_IE_OUI0          0x8C
 #define PTP_VND_IE_OUI1          0x1F
 #define PTP_VND_IE_OUI2          0x64

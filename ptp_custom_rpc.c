@@ -63,12 +63,11 @@ static void set_vendor_ie_callback(uint32_t msg_id, const uint8_t *data,
     goto send_ack;
   }
 
-  /* Plan A TSF-mapping IE patch: if the incoming IE matches the
-   * Scramble Tools TSF_MAPPING sub-OUI, replace the 8-byte placeholder
-   * payload with esp_wifi_get_tsf_time(WIFI_IF_AP) (LE µs). The
-   * capture happens HERE, right before we hand the bytes to the wifi
-   * blob — minimising skew vs the host's preciseOriginTimestamp
-   * (which was captured at host marshal time, one ESP-Hosted RPC ago). */
+  /* TSF-mapping IE patch: when the incoming IE matches the
+   * TSF_MAPPING sub-OUI, replace the 8-byte placeholder payload with
+   * esp_wifi_get_tsf_time(WIFI_IF_AP) (LE µs). Capturing here, right
+   * before the bytes reach the wifi blob, minimises skew vs the
+   * host's preciseOriginTimestamp (captured one RPC ago). */
   if (hdr->enable && vnd_ie_len >=
       6 + PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN &&
       vnd_ie[2] == PTP_VND_IE_OUI0 && vnd_ie[3] == PTP_VND_IE_OUI1 &&
