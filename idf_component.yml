@@ -1,4 +1,4 @@
-version: "0.1.2"
+version: "0.1.3"
 description: "PTP custom-RPC bridge for ESP-Hosted"
 url: "https://github.com/scrambletools/esp_ptp_rpc"
 license: "MIT"
