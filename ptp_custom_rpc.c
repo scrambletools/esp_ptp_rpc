@@ -63,24 +63,29 @@ static void set_vendor_ie_callback(uint32_t msg_id, const uint8_t *data,
     goto send_ack;
   }
 
-  /* TSF-mapping IE patch: when the incoming IE matches the
-   * TSF_MAPPING sub-OUI, replace the 8-byte placeholder payload with
-   * esp_wifi_get_tsf_time(WIFI_IF_AP) (LE µs). Capturing here, right
-   * before the bytes reach the wifi blob, minimises skew vs the
-   * host's preciseOriginTimestamp (captured one RPC ago). */
-  if (hdr->enable && vnd_ie_len >=
-      6 + PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN &&
+  /* Combined FollowUpInformation IE patch: the host appends an 8-byte
+   * AP-TSF placeholder after the §12.7 FollowUpInformation. Fill those
+   * trailing bytes with esp_wifi_get_tsf_time(WIFI_IF_AP) (LE µs) here,
+   * right before they reach the wifi blob, so the AP-TSF marker is
+   * captured atomically with the beacon carrying this BTC
+   * (preciseOriginTimestamp). The host cannot read the AP TSF itself
+   * (its remote esp_wifi_get_tsf_time returns -1), so only the
+   * coprocessor can supply it. The placeholder is the LAST
+   * PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN bytes of the IE. */
+  if (hdr->enable &&
+      vnd_ie_len >= 6 + PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN &&
       vnd_ie[2] == PTP_VND_IE_OUI0 && vnd_ie[3] == PTP_VND_IE_OUI1 &&
       vnd_ie[4] == PTP_VND_IE_OUI2 &&
-      vnd_ie[5] == PTP_VND_IE_OUI_TYPE_TSF_MAPPING) {
+      vnd_ie[5] == PTP_VND_IE_OUI_TYPE_FOLLOWUP) {
     int64_t tsf_us = esp_wifi_get_tsf_time(WIFI_IF_AP);
     uint64_t v = (uint64_t)tsf_us;
-    for (int i = 0; i < 8; ++i) {
-      vnd_ie[6 + i] = (uint8_t)((v >> (8 * i)) & 0xff);
+    uint8_t *tsf = vnd_ie + vnd_ie_len - PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN;
+    for (int i = 0; i < PTP_VND_IE_TSF_MAPPING_PAYLOAD_LEN; ++i) {
+      tsf[i] = (uint8_t)((v >> (8 * i)) & 0xff);
     }
     static uint32_t s_tsf_fills = 0;
     if ((++s_tsf_fills % 25) == 1) {
-      ESP_LOGI(TAG, "TSF mapping IE patched #%u: tsf=%lld us idx=%u",
+      ESP_LOGI(TAG, "FollowUp IE AP-TSF patched #%u: tsf=%lld us idx=%u",
                (unsigned)s_tsf_fills, (long long)tsf_us, hdr->idx);
     }
   }
